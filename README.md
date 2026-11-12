@@ -137,6 +137,10 @@ With change tracking on, rows also carry `changeType`, `changedFields`, `previou
 
 **One feed of jobs and where they are also posted.** Leave `dedupe` on and read `alsoOn` to see which other boards list the same job. Two records are merged only when company, title, location restriction, dates and apply hosts all agree, so merges are conservative.
 
+## n8n workflow
+
+[`n8n/new-remote-jobs-to-google-sheets.json`](n8n/new-remote-jobs-to-google-sheets.json) is an importable n8n workflow (core nodes only) that runs the Actor once a day with change tracking and appends only the new jobs to a Google Sheet, with the board and the board's job URL on every row. Setup, cost per run and the 300-second limit are in [`n8n/README.md`](n8n/README.md).
+
 ## Pricing
 
 The Actor uses pay-per-event pricing. Prices shown on the [Apify listing](https://apify.com/cedarfetch/remote-jobs-scraper) when this repository was written (2026-11-11):

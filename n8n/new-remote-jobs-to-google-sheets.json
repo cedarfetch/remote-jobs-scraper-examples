@@ -1,0 +1,245 @@
+{
+  "name": "New remote jobs to Google Sheets (daily)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Set these 3 things before the first run\n\n1. **Apify token**: open *Run Remote Jobs Scraper*, create a **Header Auth** credential named `Apify API token` with Name `Authorization` and Value `Bearer YOUR_APIFY_TOKEN` (token: Apify Console > Settings > API & Integrations).\n2. **Google Sheets**: open *Append rows to Google Sheet*, connect your Google account, and replace `REPLACE_WITH_YOUR_SPREADSHEET_URL` with the URL of an **empty** spreadsheet. The first run writes the header row.\n3. **What to search**: edit the JSON body of the HTTP node (boards, `titleKeywords`, `categories`, `locationsAllowed`, `minSalaryUsd`...). Field list: see the repo README.\n\nThen activate the workflow. The first run lists up to 100 current jobs as `new` (it creates the baseline); after that each run appends only jobs it has not seen before.",
+        "height": 400,
+        "width": 520,
+        "color": 4
+      },
+      "id": "1cc4e2b2-0ea3-5d17-a777-a46274317e24",
+      "name": "Note: setup",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        -420
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 300-second limit\n\nThis node uses Apify's `run-sync-get-dataset-items` endpoint, which answers **408 after 300 seconds** (the node timeout is 310 s so you see Apify's answer). The default input (4 boards, no descriptions) finishes in well under a minute. Adding `fourdayweek` (about 100 polite requests) can push a run past the limit.\n\n`maxTotalChargeUsd=0.50` in the query caps the cost of one run. Jobs that did not fit are delivered by the next run.",
+        "height": 400,
+        "width": 420,
+        "color": 6
+      },
+      "id": "a40cc9dc-bd6f-5eb1-acb5-58848d8b83f8",
+      "name": "Note: limits",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        460,
+        -420
+      ]
+    },
+    {
+      "parameters": {
+        "content": "Uses the Remote Jobs Scraper Actor by Cedarfetch Labs on Apify (pay per result).\nhttps://apify.com/cedarfetch/remote-jobs-scraper",
+        "height": 140,
+        "width": 380,
+        "color": 7
+      },
+      "id": "2659350d-95ef-598d-96c3-856efc1c4dac",
+      "name": "Note: disclosure",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        900,
+        -420
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "daysInterval": 1,
+              "triggerAtHour": 7
+            }
+          ]
+        }
+      },
+      "id": "523427c8-24eb-5825-ae08-edd452d73baf",
+      "name": "Every day at 07:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.apify.com/v2/acts/cedarfetch~remote-jobs-scraper/run-sync-get-dataset-items",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "maxTotalChargeUsd",
+              "value": "0.50"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"sources\": [\n    \"remoteok\",\n    \"weworkremotely\",\n    \"remotive\",\n    \"jobicy\"\n  ],\n  \"maxJobs\": 100,\n  \"includeDescription\": false,\n  \"trackChanges\": true,\n  \"changesOnly\": true,\n  \"changeTypes\": [\n    \"new\"\n  ],\n  \"snapshotStoreName\": \"n8n-new-remote-jobs\"\n}",
+        "options": {
+          "timeout": 310000
+        }
+      },
+      "id": "203cb03a-bd6f-5172-8e83-43c746ecceb0",
+      "name": "Run Remote Jobs Scraper (new jobs only)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        0
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Apify API token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "20354f8b-b902-586a-b90e-4f73d6d3065f",
+              "leftValue": "={{ $json.recordType }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "rightValue": "job"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "75c22625-601f-560d-b2b4-77af67b43991",
+      "name": "Keep job rows only",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        500,
+        0
+      ],
+      "notes": "Drops source_status rows (a board that could not be read; free) and the empty item the HTTP node passes on when there are no new jobs."
+    },
+    {
+      "parameters": {
+        "jsCode": "// One sheet row per job. Column names become the sheet header on the first run.\n// Job URL is always the board's own job page (jobUrl), as the boards' terms ask.\nconst BOARD = {\n  remoteok: 'Remote OK',\n  weworkremotely: 'We Work Remotely',\n  remotive: 'Remotive',\n  jobicy: 'Jobicy',\n  fourdayweek: '4dayweek.io',\n  remotefirstjobs: 'Remote First Jobs',\n  arbeitnow: 'Arbeitnow',\n};\n\nfunction salary(job) {\n  const c = job.compensation || {};\n  if (c.min != null || c.max != null) {\n    const range = c.min != null && c.max != null && c.min !== c.max ? `${c.min}-${c.max}` : `${c.min ?? c.max}`;\n    return `${c.currency ?? ''} ${range}${c.interval ? ' / ' + c.interval : ''}`.trim();\n  }\n  return c.text ?? '';\n}\n\nfunction usd(job) {\n  const lo = job.salaryUsdAnnualMin;\n  const hi = job.salaryUsdAnnualMax;\n  if (lo == null && hi == null) return '';\n  return lo != null && hi != null && lo !== hi ? `${lo}-${hi}` : `${lo ?? hi}`;\n}\n\nreturn $input.all().map(({ json: job }) => ({\n  json: {\n    'Posted': job.postedAt ?? '',\n    'Title': job.title ?? '',\n    'Company': job.companyName ?? '',\n    'Board': BOARD[job.source] ?? job.source ?? '',\n    'Location restriction': job.location ?? '',\n    'Worldwide': job.isWorldwide === true ? 'yes' : job.isWorldwide === false ? 'no' : '',\n    'Salary': salary(job),\n    'Salary USD/yr (estimate)': usd(job),\n    'Category': job.category ?? '',\n    'Employment type': job.employmentType ?? '',\n    'Job URL': job.jobUrl ?? '',\n    'Also on': (job.alsoOn || []).map((a) => BOARD[a.source ?? a] ?? a.source ?? a).join(', '),\n    'Job ID': job.jobId ?? '',\n    'Source terms': job.sourceAttribution ?? '',\n  },\n}));\n"
+      },
+      "id": "915c706a-2928-5ce0-abd2-d2130b3fa036",
+      "name": "Shape sheet columns",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_YOUR_SPREADSHEET_URL",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Sheet1",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "50e6eb45-8ddd-57a2-8f66-f6b600d09da9",
+      "name": "Append rows to Google Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        940,
+        0
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "name": "Google Sheets account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every day at 07:00": {
+      "main": [
+        [
+          {
+            "node": "Run Remote Jobs Scraper (new jobs only)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Remote Jobs Scraper (new jobs only)": {
+      "main": [
+        [
+          {
+            "node": "Keep job rows only",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Keep job rows only": {
+      "main": [
+        [
+          {
+            "node": "Shape sheet columns",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Shape sheet columns": {
+      "main": [
+        [
+          {
+            "node": "Append rows to Google Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": []
+}
