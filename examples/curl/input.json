@@ -1,0 +1,9 @@
+{
+    "sources": [
+        "remoteok",
+        "weworkremotely",
+        "remotive"
+    ],
+    "maxJobs": 20,
+    "includeDescription": false
+}
